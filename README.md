@@ -1,191 +1,208 @@
-> This README will continue after the following paid sponsorship. Revenue from this sponsor helps fund the ongoing development, maintenance, infrastructure and support of this open-source project.
-
-# Recall.ai - API for desktop recording
-
-If you're looking for a hosted desktop recording API, consider checking out [Recall.ai](https://docs.recall.ai/docs/desktop-sdk/?utm_source=github&utm_medium=sponsorship&utm_campaign=alectrocute-electron-audio-loopback), an API that records Zoom, Google Meet, Microsoft Teams, in-person meetings, and more.
-
 # Electron Audio Loopback
 
-An Electron plugin for capturing system audio loopback on macOS 12.3+, Windows 10+ and Linux without any third-party loopback drivers or dependencies.
+Capture system audio in an Electron application and receive it as a browser `MediaStream`. The package configures Chromium loopback features and bridges Electron's main and renderer processes through IPC.
 
-To play around with a full example, check out the [mic-speaker-streamer](https://github.com/alectrocute/mic-speaker-streamer) repo. It's a simple app that allows you to simultaneously stream your microphone and system audio to a third-party transcription API while also recording both streams into a WAV file. Alternatively, check out the [bundled example in this repo](https://github.com/alectrocute/electron-audio-loopback/tree/main/example).
-
-## History
-
-Between Electron versions 31 and 39, the Chromium shipped inside required hacks to get system audio loopback working properly. This package patches that behavior and allows for system audio capture on all platforms without any extra dependencies like drivers or binaries. Read my blog write-up [here](https://alec.is/posts/bringing-system-audio-loopback-to-electron/) for technical details.
-
-## Real-World Usage
-
-If your app is using Electron Audio Loopback, [make a PR](https://github.com/alectrocute/electron-audio-loopback/pulls) to add it to the list below! Both open and closed source apps are welcome.
-
-- [mic-speaker-streamer](https://github.com/alectrocute/mic-speaker-streamer): An example microphone/system audio transcription app using OpenAI's Realtime API.
-
-## Installation
-
-```bash
-npm install electron-audio-loopback
-```
-
-## Usage
-
-### Main Process Setup
-
-```javascript
-const { app } = require('electron');
-const { initMain } = require('electron-audio-loopback');
-
-// Initialize this plugin in your main process
-// before the app is ready. Simple!
-initMain();
-
-app.whenReady().then(() => {
-  // Your app initialization...
-});
-```
-
-### Renderer Process Usage
-
-#### Manual Mode (Recommended)
-
-If you do not have `nodeIntegration` enabled in your renderer process, then you'll need to manually initialize the plugin via IPC. See the example below:
-
-```javascript
-// preload.js
-const { contextBridge, ipcRenderer } = require('electron');
-
-contextBridge.exposeInMainWorld('electronAPI', {
-  enableLoopbackAudio: () => ipcRenderer.invoke('enable-loopback-audio'),
-  disableLoopbackAudio: () => ipcRenderer.invoke('disable-loopback-audio')
-});
-
-// renderer.js
-async function getLoopbackAudioMediaStream() {
-    // Tell the main process to enable system audio loopback.
-    // This will override the default `getDisplayMedia` behavior.
-    await window.electronAPI.enableLoopbackAudio();
-
-    // Get a MediaStream with system audio loopback.
-    // `getDisplayMedia` will fail if you don't request `video: true`.
-    const stream = await navigator.mediaDevices.getDisplayMedia({ 
-      video: true,
-      audio: true,
-    });
-    
-    // Remove video tracks that we don't need.
-    // Note: You may find bugs if you don't remove video tracks.
-    const videoTracks = stream.getVideoTracks();
-
-    videoTracks.forEach(track => {
-        track.stop();
-        stream.removeTrack(track);
-    });
-
-    // Tell the main process to disable system audio loopback.
-    // This will restore full `getDisplayMedia` functionality.
-    // Do this if you need to use `getDisplayMedia` for other
-    // purposes elsewhere in your app.
-    await window.electronAPI.disableLoopbackAudio();
-    
-    // Boom! You've got a MediaStream with system audio loopback.
-    // Use it with an audio element or Web Audio API.
-    return stream;
-}
-```
-
-#### Automatic Mode
-
-If `nodeIntegration` is enabled in your renderer process, then you can import the renderer helper function directly. This will take care of everything for you in one line of code.
-
-```javascript
-const { getLoopbackAudioMediaStream } = require('electron-audio-loopback');
-
-// Get a MediaStream with system audio loopback
-const stream = await getLoopbackAudioMediaStream();
-
-// The stream contains only audio tracks
-const audioTracks = stream.getAudioTracks();
-console.log('Audio tracks:', audioTracks);
-
-// Use the stream with an audio element or Web Audio API
-const audioElement = document.getElementById('audio');
-audioElement.srcObject = stream;
-audioElement.play();
-```
-
-If you don't want to remove the video tracks, you can pass `removeVideo: false` to the `getLoopbackAudioMediaStream` function.
-
-## API Reference
-
-### Main Process Functions
-
-- `initMain(options?: InitMainOptions)`: Initialize the plugin in the main process. Must be called before the app is ready.
-  - `sourcesOptions`: The options to pass to the `desktopCapturer.getSources` method.
-  - `forceCoreAudioTap`: Whether to force the use of the Core Audio API on macOS (can be used to bypass bugs for certain macOS versions).
-  - `loopbackWithMute`: Whether to use the loopback audio with mute. Defaults to `false`.
-  - `sessionOverride`: The session to override. Defaults to `session.defaultSession`.
-  - `onAfterGetSources`: A function that is called after the sources are retrieved. Useful for advanced & unique scenarios. Defaults to `undefined`.
-
-### Renderer Process Functions
-
-- `getLoopbackAudioMediaStream(options?: GetLoopbackAudioMediaStreamOptions)`: Helper function that returns a Promise, resolves to a `MediaStream` containing system audio loopback. Video tracks are automatically removed from the stream.
-  - `removeVideo`: Whether to remove the video tracks from the stream. Defaults to `true`.
-
-### IPC Handlers
-
-The plugin registers these IPC handlers automatically, ensure you don't override them!
-
-- `enable-loopback-audio`: Enables system audio loopback capture
-- `disable-loopback-audio`: Disables system audio loopback capture
+The npm package name is `electron-audio-loopback`.
 
 ## Requirements
 
-- Electron >=31.0.1
-  - This is cruicial, older Electron versions will not work with `electron-audio-loopback`.
-- Electron <39.0.0
-  - Electron 39 and up—you're in the clear—you won't require `electron-audio-loopback`, [read more](https://github.com/alectrocute/electron-audio-loopback/issues/7). If you run into system audio capture issues, it's likely a skill issue. Please see [@chrhartm/electron-mic-speaker-loop](https://github.com/chrhartm/electron-mic-speaker-loop) for a working Electron 39 demo that doesn't use any additional dependencies.
-- macOS 12.3+
-- Windows 10+
-- Most Linux distros with PulseAudio as a sound server
+- Electron **31.0.1 or later**, as declared by the package's peer dependency.
+- Supported platform targets: macOS 12.3+, Windows 10+, and Linux with PulseAudio.
+- Any screen or system-audio capture permissions required by the operating system.
 
-## Development
+Capture behavior depends on the Electron/Chromium version and platform. The declared peer dependency does not guarantee compatibility with every later Electron release.
 
-### Prerequisites
+## Installation
 
-- Node.js 18+
-- npm or yarn
-
-### Setup
-
-```bash
-# Install dependencies
-npm install
-
-# Build the project
-npm run build
-
-# Development mode with watch
-npm run dev
-
-# Lint code
-npm run lint
-
-# Run example
-npm test
+```sh
+npm install electron-audio-loopback
 ```
 
-PR's welcome!
+Your application must also provide Electron.
 
-### Project Structure
+## Usage
 
-```bash
+### Initialize the main process
+
+Call `initMain()` once, before the application is ready, so its Chromium feature switches take effect.
+
+```js
+// main.js
+const { app, BrowserWindow } = require('electron');
+const path = require('node:path');
+const { initMain } = require('electron-audio-loopback');
+
+initMain();
+
+app.whenReady().then(() => {
+  const window = new BrowserWindow({
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+    },
+  });
+
+  window.loadFile('index.html');
+});
+```
+
+### Capture through a preload bridge
+
+Expose the two capture operations from your preload script:
+
+```js
+// preload.js
+const { contextBridge, ipcRenderer } = require('electron');
+
+contextBridge.exposeInMainWorld('loopback', {
+  enable: () => ipcRenderer.invoke('enable-loopback-audio'),
+  disable: () => ipcRenderer.invoke('disable-loopback-audio'),
+});
+```
+
+In the renderer, request both audio and video, then stop and remove the video tracks. Use `finally` to clear the temporary display-media handler even if capture fails.
+
+```js
+// renderer.js (loaded by index.html)
+async function captureSystemAudio() {
+  await window.loopback.enable();
+
+  try {
+    const stream = await navigator.mediaDevices.getDisplayMedia({
+      video: true,
+      audio: true,
+    });
+
+    for (const track of stream.getVideoTracks()) {
+      track.stop();
+      stream.removeTrack(track);
+    }
+
+    return stream;
+  } finally {
+    await window.loopback.disable();
+  }
+}
+
+// Invoke from a capture button's click handler.
+document.querySelector('#start').addEventListener('click', async () => {
+  try {
+    const stream = await captureSystemAudio();
+    // Pass stream to MediaRecorder, Web Audio, or RTCPeerConnection.
+    // When finished: stream.getTracks().forEach(track => track.stop());
+    console.log('Captured audio tracks:', stream.getAudioTracks());
+  } catch (error) {
+    console.error('System audio capture failed:', error);
+  }
+});
+```
+
+Provide a `<button id="start">Capture system audio</button>` in your page. Stopping the returned tracks ends capture; clearing the IPC handler does not stop an existing stream.
+
+### Use the renderer helper
+
+In a renderer where Electron's `ipcRenderer` and CommonJS `require` are available, the package provides a convenience helper:
+
+```js
+const { getLoopbackAudioMediaStream } = require('electron-audio-loopback');
+
+async function capture() {
+  const stream = await getLoopbackAudioMediaStream();
+  return stream;
+}
+```
+
+The helper enables loopback capture, requests a display-media stream, stops and removes video tracks by default, clears the display-media handler, and returns the stream. Pass `{ removeVideo: false }` to retain video tracks. The source code cautions that retained video may be unstable.
+
+The helper currently clears the handler only after a successful capture. If `getDisplayMedia()` rejects, clear it through `ipcRenderer.invoke('disable-loopback-audio')` in your error handling, or use the preload bridge pattern above.
+
+## API
+
+### `initMain(options?): void`
+
+Main-process initialization. Preserves existing `enable-features` values while adding the package's loopback feature flags, and registers the capture IPC handlers.
+
+| Option | Type | Default | Behavior |
+| --- | --- | --- | --- |
+| `sourcesOptions` | Electron `SourcesOptions` | `{ types: ['screen'] }` | Options passed to `desktopCapturer.getSources()`. |
+| `onAfterGetSources` | `(sources: DesktopCapturerSource[]) => DesktopCapturerSource[]` | Unset | Synchronously filters or reorders the captured sources. The first returned source is selected; the array must be nonempty. |
+| `forceCoreAudioTap` | `boolean` | `false` | Selects the macOS Core Audio Tap feature flag instead of the ScreenCaptureKit override flag. |
+| `loopbackWithMute` | `boolean` | `false` | Requests Electron's `loopbackWithMute` audio mode instead of `loopback`. Platform support depends on Electron. |
+| `sessionOverride` | Electron `Session` | `session.defaultSession` | Session whose display-media request handler is changed. Use the session associated with the capturing renderer. |
+
+For example, select a particular screen by its source ID:
+
+```js
+initMain({
+  sourcesOptions: { types: ['screen'] },
+  onAfterGetSources: sources => sources.filter(source => source.id === screenId),
+});
+```
+
+Here, `screenId` must be an application-provided desktop capture source ID.
+
+### `getLoopbackAudioMediaStream(options?): Promise<MediaStream>`
+
+Renderer helper. The sole option is `removeVideo` (`boolean`, default `true`), which controls whether video tracks are stopped and removed before returning the stream.
+
+Runtime exports depend on the Electron process: the main process receives `initMain`, and a renderer receives `getLoopbackAudioMediaStream`.
+
+### IPC channels
+
+| Channel | Behavior |
+| --- | --- |
+| `enable-loopback-audio` | Installs the session's display-media request handler. Requests select the first configured desktop source and include loopback audio. |
+| `disable-loopback-audio` | Clears the session's display-media request handler. |
+
+Both channels use `ipcRenderer.invoke()` and accept no arguments. Avoid registering other handlers on these channel names.
+
+## Capture considerations
+
+- Enabling capture replaces the selected session's display-media handler. Disabling clears it; a previously installed handler is not restored.
+- The handler is shared by the session. Coordinate concurrent capture requests and other screen-sharing flows in your application.
+- Both `video: true` and `audio: true` are requested, even when you only need audio.
+- The default source is the first screen returned by Electron. Use `onAfterGetSources` to change selection.
+- Avoid playing the captured audio back through the same output being captured, which can create feedback.
+- If capture fails, check operating-system permissions, available desktop sources, the renderer's session, and audio-track availability on your Electron/platform combination.
+
+## Local development
+
+```sh
+npm ci
+npm run build
+```
+
+| Command | Purpose |
+| --- | --- |
+| `npm run build` | Compile TypeScript and declarations into `dist/`. |
+| `npm run dev` | Recompile when source files change. |
+| `npm run clean` | Remove `dist/`. |
+| `npm run lint` | Run ESLint on `src/`. |
+| `npm run lint:fix` | Apply ESLint fixes. |
+| `npm test` | Build and launch the interactive Electron example; this is not an automated test suite. |
+
+The bundled example displays an audio player and frequency visualizer. Its main script loads `index.html` using a relative path. To run it with the example directory as the working directory:
+
+```sh
+npm run build
+cd example
+npx electron index.js
+```
+
+Source files:
+
+```text
 src/
-├── index.ts          # Main entry point with conditional exports
-├── main.ts           # Main process initialization
-├── config.ts         # Configuration
-├── types.d.ts        # Type definitions
-└── renderer.ts       # Renderer process helper function
+  index.ts       Process-dependent runtime exports
+  main.ts        Feature switches and capture IPC handlers
+  renderer.ts    MediaStream capture helper
+  config.ts      IPC channel names and feature flag configuration
+  types.d.ts     Public option interfaces
+example/         Interactive Electron demo
 ```
 
 ## License
 
-MIT © Alec Armbruster [@alectrocute](https://github.com/alectrocute)
+MIT, as declared in `package.json`. Author: Alec Armbruster.
